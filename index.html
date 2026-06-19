@@ -6,8 +6,8 @@
     <meta name="description" content="Profesyonel web tasarım hizmetleri" />
     <title>Web Tasarım — Size Özel  Siteler</title>
 
-    <link rel="icon" href="/icon/icon.ico" type="image/x-icon" />
-    <link rel="shortcut icon" href="/icon/icon.ico" type="image/x-icon" />
+    <link rel="icon" href="./icon/icon.ico" type="image/x-icon" />
+    <link rel="shortcut icon" href="./icon/icon.ico" type="image/x-icon" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1587,6 +1587,14 @@ button, .btn-primary, .btn-outline, .btn-ghost, .btn-discord {
 
           // Start cooldown display check
           startCooldownTimer();
+
+          // Pass user details to Tawk.to
+          if (window.Tawk_API && typeof window.Tawk_API.setAttributes === 'function') {
+            window.Tawk_API.setAttributes({
+              name: user.name,
+              email: user.email
+            }, function(error) {});
+          }
         } else {
           navActions.innerHTML = `
             <button class="btn-primary" onclick="openModal()"><i class="fa-solid fa-user"></i> Giriş Yap</button>
@@ -1637,6 +1645,26 @@ button, .btn-primary, .btn-outline, .btn-ghost, .btn-discord {
       const GEMINI_HEX = "16067916356f0519611b64221e2e25343266210e366e233a3d3f222e621f36013a2467141e3a1c302d33343e65211512207a071a16";
       const OPENROUTER_HEX = "243c7a38257a21667a6f6e6563323331633363313633676f64333435673362626262336236326136313466606433653332333535633136346e613432646634656f663364316761656f";
 
+      async function fetchWithTimeout(resource, options = {}) {
+        const { timeout = 60000 } = options;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        try {
+          const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal  
+          });
+          return response;
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            throw new Error("İstek zaman aşımına uğradı (60 saniye). Lütfen tekrar deneyin.");
+          }
+          throw error;
+        } finally {
+          clearTimeout(id);
+        }
+      }
+
       async function callGeminiApi(promptText, modelName) {
         const apiKey = xorDecrypt(GEMINI_HEX);
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -1649,7 +1677,7 @@ Every style must be inside a <style> tag or inline.
 You MUST also inject this exact footer at the very bottom of the page (inside the body, before </body>):
 <footer style="text-align: center; padding: 2rem; background: #0b0b0f; color: #71717a; border-top: 1px solid rgba(255,255,255,0.05); font-family: sans-serif; font-size: 0.9rem; margin-top: 4rem;">development WebCraft<br>&copy; 2026 Tüm Hakları Saklıdır.</footer>`;
 
-        const response = await fetch(endpoint, {
+        const response = await fetchWithTimeout(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -1663,7 +1691,8 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
             generationConfig: {
               responseMimeType: "text/plain"
             }
-          })
+          }),
+          timeout: 60000
         });
 
         if (!response.ok) {
@@ -1690,7 +1719,7 @@ Every style must be inside a <style> tag or inline.
 You MUST also inject this exact footer at the very bottom of the page (inside the body, before </body>):
 <footer style="text-align: center; padding: 2rem; background: #0b0b0f; color: #71717a; border-top: 1px solid rgba(255,255,255,0.05); font-family: sans-serif; font-size: 0.9rem; margin-top: 4rem;">development WebCraft<br>&copy; 2026 Tüm Hakları Saklıdır.</footer>`;
 
-        const response = await fetch(endpoint, {
+        const response = await fetchWithTimeout(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1704,7 +1733,8 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
               role: "user",
               content: systemPrompt
             }]
-          })
+          }),
+          timeout: 60000
         });
 
         if (!response.ok) {
@@ -1761,8 +1791,11 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
       }
 
       // AI website generation handler
+      let isGeneratingSite = false;
       async function handleAiGeneration(event) {
         event.preventDefault();
+        if (isGeneratingSite) return;
+        
         const user = JSON.parse(sessionStorage.getItem('loggedInUser'));
         if (!user) {
           alert("Lütfen önce giriş yapın.");
@@ -1790,6 +1823,7 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
         const originalBtnHtml = submitBtn.innerHTML;
         submitBtn.disabled = true;
         submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Derleniyor...`;
+        isGeneratingSite = true;
 
         try {
           const rawCode = await generateSiteFromApi(promptText);
@@ -1829,13 +1863,97 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
           alert("Site oluşturulurken bir hata oluştu: " + error.message);
           // Restore button state
           checkAndUpdateCooldown();
+        } finally {
+          isGeneratingSite = false;
         }
       }
 
       // Logout
       function handleLocalLogout() {
         sessionStorage.removeItem('loggedInUser');
+        if (window.Tawk_API && typeof window.Tawk_API.shutdown === 'function') {
+          window.Tawk_API.shutdown();
+        }
         updateNavbarUI();
+      }
+
+      // Maintenance Mode System
+      window.isMaintenanceModeActive = false;
+      function initMaintenanceSystem() {
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes pulse-glow {
+            0% { transform: scale(1); box-shadow: 0 0 30px rgba(255, 255, 255, 0.10); }
+            50% { transform: scale(1.05); box-shadow: 0 0 50px rgba(255, 255, 255, 0.25); }
+            100% { transform: scale(1); box-shadow: 0 0 30px rgba(255, 255, 255, 0.10); }
+          }
+        `;
+        document.head.appendChild(style);
+
+        const overlay = document.createElement('div');
+        overlay.id = 'maintenanceOverlay';
+        overlay.style.cssText = 'display: none; position: fixed; inset: 0; z-index: 2147483647; background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06) 0%, rgba(5, 5, 8, 0.98) 100%); color: white; font-family: sans-serif; align-items: center; justify-content: center; text-align: center; padding: 2rem; backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);';
+        overlay.innerHTML = `
+          <div class="glass-card" style="padding: 3.5rem 3rem; border-radius: 28px; max-width: 500px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(10, 10, 15, 0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 20px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
+            <div style="width: 84px; height: 84px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.4rem; color: #ffffff; box-shadow: 0 0 35px rgba(255, 255, 255, 0.15); animation: pulse-glow 2s infinite;">
+              <i class="fa-solid fa-screwdriver-wrench"></i>
+            </div>
+            <h1 style="font-size: 2.2rem; font-weight: 800; margin: 0; background: linear-gradient(135deg, #ffffff 0%, #71717a 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px;">Sistem Bakımda</h1>
+            <p style="color: #a1a1aa; font-size: 0.95rem; line-height: 1.6; margin: 0; padding: 0 10px;">Sizlere daha iyi bir deneyim sunabilmek için şu anda planlı bakım çalışması yapıyoruz. Lütfen bekleyin, çalışma tamamlandığında site otomatik olarak açılacaktır.</p>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: rgba(255, 255, 255, 0.5); font-weight: 500; margin-top: 0.5rem;">
+              <i class="fa-solid fa-spinner fa-spin"></i> Canlı durum kontrol ediliyor...
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        async function checkMaintenanceMode() {
+          const envUrl = "https://raw.githubusercontent.com/guestiyy/env/main/bak%C4%B1m.env?t=" + Date.now();
+          try {
+            // Prevent caching aggressively using headers
+            const response = await fetch(envUrl, {
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+              }
+            });
+            if (!response.ok) throw new Error("Maintenance status check failed");
+            const text = await response.text();
+            const isMaintenance = /durum\s*=\s*FALSE/i.test(text);
+
+            window.isMaintenanceModeActive = isMaintenance;
+
+            if (isMaintenance) {
+              if (overlay.style.display !== 'flex') {
+                overlay.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+              }
+              if (window.Tawk_API && typeof window.Tawk_API.hideWidget === 'function') {
+                window.Tawk_API.hideWidget();
+              }
+              const customBtn = document.getElementById('customTawkButton');
+              if (customBtn) customBtn.style.display = 'none';
+            } else {
+              if (overlay.style.display === 'flex') {
+                overlay.style.display = 'none';
+                document.body.style.overflow = '';
+              }
+              if (window.Tawk_API && typeof window.Tawk_API.hideWidget === 'function') {
+                window.Tawk_API.hideWidget();
+              }
+              const customBtn = document.getElementById('customTawkButton');
+              if (customBtn && window.Tawk_API && typeof window.Tawk_API.hideWidget === 'function') {
+                customBtn.style.display = 'flex';
+              }
+            }
+          } catch (error) {
+            console.warn("Bakım kontrolü başarısız:", error);
+          }
+        }
+
+        setInterval(checkMaintenanceMode, 1000); // Check every 1 second to make it instant!
+        checkMaintenanceMode();
       }
 
       // DevTools and DOM Tampering Protection
@@ -1869,8 +1987,22 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
           }
         });
 
-        // 3. MutationObserver to prevent lock bypass
+        // 3. MutationObserver to prevent lock bypass and maintenance bypass
         const observer = new MutationObserver((mutations) => {
+          // If maintenance mode is active, prevent anyone from hiding or deleting the overlay
+          const maintenanceOverlay = document.getElementById('maintenanceOverlay');
+          if (window.isMaintenanceModeActive) {
+            if (!maintenanceOverlay) {
+              location.reload();
+              return;
+            }
+            const mStyle = window.getComputedStyle(maintenanceOverlay);
+            if (mStyle.display !== 'flex' || parseFloat(mStyle.opacity) === 0 || mStyle.visibility === 'hidden') {
+              location.reload();
+              return;
+            }
+          }
+
           const loggedIn = !!sessionStorage.getItem('loggedInUser');
           if (loggedIn) return; // Allow normal hiding of overlays upon successful login
 
@@ -1878,22 +2010,30 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
           const pricingOverlay = document.getElementById('pricingLockOverlay');
           const generatorOverlay = document.getElementById('generatorLockOverlay');
           
-          if (!pricingOverlay || !generatorOverlay || 
-              pricingOverlay.style.display === 'none' || pricingOverlay.style.opacity === '0' ||
-              generatorOverlay.style.display === 'none' || generatorOverlay.style.opacity === '0' ||
-              pricingOverlay.style.visibility === 'hidden' || generatorOverlay.style.visibility === 'hidden') {
-            
-            // Tampering detected!
-            document.body.innerHTML = `
-              <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#050508; color:white; font-family:sans-serif; text-align:center; padding:2rem; gap:1rem; z-index:999999;">
-                <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; color: #ef4444;"></i>
-                <h1 style="font-size: 1.8rem; margin: 0;">Güvenlik İhlali Tespit Edildi</h1>
-                <p style="color: #a1a1aa; font-size: 1rem; max-width: 400px; margin: 0;">Sayfa elementlerinde yetkisiz değişiklik yapıldığı için oturum sonlandırıldı ve sayfa sıfırlanıyor.</p>
-              </div>
-            `;
-            setTimeout(() => { location.reload(); }, 2000);
+          if (!pricingOverlay || !generatorOverlay) {
+            triggerTamperingResponse();
+            return;
+          }
+
+          // Use computed style to avoid discrepancies between inline and CSS styles
+          const pStyle = window.getComputedStyle(pricingOverlay);
+          const gStyle = window.getComputedStyle(generatorOverlay);
+          if (pStyle.display === 'none' || parseFloat(pStyle.opacity) === 0 || pStyle.visibility === 'hidden' ||
+              gStyle.display === 'none' || parseFloat(gStyle.opacity) === 0 || gStyle.visibility === 'hidden') {
+            triggerTamperingResponse();
           }
         });
+
+        function triggerTamperingResponse() {
+          document.body.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#050508; color:white; font-family:sans-serif; text-align:center; padding:2rem; gap:1rem; z-index:999999;">
+              <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; color: #ef4444;"></i>
+              <h1 style="font-size: 1.8rem; margin: 0;">Güvenlik İhlali Tespit Edildi</h1>
+              <p style="color: #a1a1aa; font-size: 1rem; max-width: 400px; margin: 0;">Sayfa elementlerinde yetkisiz değişiklik yapıldığı için oturum sonlandırıldı ve sayfa sıfırlanıyor.</p>
+            </div>
+          `;
+          setTimeout(() => { location.reload(); }, 2000);
+        }
 
         observer.observe(document.body, {
           childList: true,
@@ -1903,10 +2043,45 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
         });
       }
 
+      // Discord Webhook Site Visit Logger
+      async function registerVisit() {
+        if (sessionStorage.getItem('visitLogged')) return;
+        try {
+          const res = await fetch('https://api.counterapi.dev/v1/guestiyy/site_visits/up');
+          if (!res.ok) throw new Error("Counter API failed");
+          const data = await res.json();
+          const count = data.count;
+
+          const webhookUrl = 'https://discord.com/api/webhooks/1517480793579065394/F7dtIDIn7iv10RP_Cemno8j8gc89TwGJ4gLlp44C7S7OqSu0VD_CVCpVfLbpzFM9oCs7';
+          await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              embeds: [{
+                title: "📌 Site Ziyareti",
+                description: `Siteye yeni bir ziyaretçi giriş yaptı.\n**Toplam Ziyaret Sayısı:** \`${count}\``,
+                color: 3092790,
+                timestamp: new Date().toISOString(),
+                footer: {
+                  text: "guestiyy.github.io"
+                }
+              }]
+            })
+          });
+          sessionStorage.setItem('visitLogged', 'true');
+        } catch (e) {
+          console.error("Ziyaret kaydı yapılamadı:", e);
+        }
+      }
+
       // Initialize Navbar UI and Security Protections on load
       window.addEventListener('DOMContentLoaded', () => {
+        initMaintenanceSystem();
         updateNavbarUI();
         initSecurityProtections();
+        registerVisit();
       });
 
       
@@ -2044,5 +2219,115 @@ You MUST also inject this exact footer at the very bottom of the page (inside th
       setTimeout(reveal, 100); 
     </script>
     <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"b78e322b364240999d32af1e5b43e200","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+    <!--Start of Tawk.to Script-->
+    <script type="text/javascript">
+    // Tawk.to Theme and Position Configuration to match Purple/Dark theme
+    var Tawk_API = Tawk_API || {};
+    var Tawk_LoadStart = new Date();
+    Tawk_API.customStyle = {
+      visibility: {
+        desktop: {
+          position: 'br', // bottom right
+          xOffset: 25,
+          yOffset: 25
+        },
+        mobile: {
+          position: 'br',
+          xOffset: 15,
+          yOffset: 15
+        }
+      }
+    };
+
+    // Create custom B&W launcher button dynamically
+    const customTawkBtn = document.createElement('div');
+    customTawkBtn.id = 'customTawkButton';
+    customTawkBtn.style.cssText = `
+      position: fixed;
+      bottom: 25px;
+      right: 25px;
+      z-index: 10000;
+      background: #09090b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 99px;
+      padding: 8px 24px 8px 12px;
+      color: #ffffff;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex; /* Shown by default */
+      align-items: center;
+      gap: 12px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      user-select: none;
+    `;
+    customTawkBtn.innerHTML = `
+      <div style="width: 32px; height: 32px; background: rgba(255, 255, 255, 0.08); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <i class="fa-regular fa-comment" style="font-size: 1rem; color: #ffffff;"></i>
+      </div>
+      <span style="letter-spacing: -0.2px; font-family: 'Inter', sans-serif;">Canlı Destek</span>
+    `;
+    
+    // Add hover styles dynamically
+    const hoverStyle = document.createElement('style');
+    hoverStyle.textContent = `
+      #customTawkButton:hover {
+        background: #18181b !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6) !important;
+      }
+      #customTawkButton:active {
+        transform: translateY(0) scale(0.98);
+      }
+    `;
+    document.head.appendChild(hoverStyle);
+    document.body.appendChild(customTawkBtn);
+
+    customTawkBtn.addEventListener('click', () => {
+      if (window.Tawk_API && typeof window.Tawk_API.maximize === 'function') {
+        Tawk_API.showWidget();
+        Tawk_API.maximize();
+      } else {
+        alert("Canlı destek bağlantısı kuruluyor, lütfen birkaç saniye sonra tekrar deneyin. (Yerel dosya olarak açtıysanız tawk bağlantısı kurulamaz)");
+      }
+    });
+
+    Tawk_API.onLoad = function() {
+      Tawk_API.hideWidget();
+      if (!window.isMaintenanceModeActive) {
+        customTawkBtn.style.display = 'flex';
+      }
+    };
+
+    Tawk_API.onChatMaximized = function() {
+      customTawkBtn.style.display = 'none';
+    };
+
+    Tawk_API.onChatMinimized = function() {
+      Tawk_API.hideWidget();
+      if (!window.isMaintenanceModeActive) {
+        customTawkBtn.style.display = 'flex';
+      }
+    };
+
+    (function(){
+      var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+      s1.async=true;
+      s1.src='https://embed.tawk.to/6a350eb0b1bc7b1d4bd8d7a9/1jrfk2p1c';
+      s1.charset='UTF-8';
+      s1.setAttribute('crossorigin','*');
+      if (s0 && s0.parentNode) {
+        s0.parentNode.insertBefore(s1,s0);
+      } else {
+        document.head.appendChild(s1);
+      }
+    })();
+    </script>
+    <!--End of Tawk.to Script-->
   </body>
 </html>
